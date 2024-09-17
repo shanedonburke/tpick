@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"tpick/explorer"
-	"tpick/explorer/help"
+	"tpick/help"
 	"tpick/screen"
 
 	"github.com/gdamore/tcell/v2"
@@ -45,6 +45,8 @@ func processArgs() string {
 			dirArg = arg
 		}
 	default:
+		fmt.Println("ERROR: Invalid arguments")
+		fmt.Println()
 		help.PrintHelp()
 		os.Exit(0)
 	}
