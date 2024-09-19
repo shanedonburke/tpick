@@ -7,7 +7,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"unicode/utf8"
+	"tpick/filter"
+	"tpick/text"
 
 	"github.com/atotto/clipboard"
 	"github.com/gdamore/tcell/v2"
@@ -39,52 +40,6 @@ const (
 type Item struct {
 	Text  string
 	IsDir bool
-}
-
-type FilterState struct {
-	Text              string
-	CursorLoc         int
-	PrevSelectionText string
-}
-
-func (fs *FilterState) IsActive() bool {
-	return fs.Text != ""
-}
-
-func (fs *FilterState) MoveCursorLeft() {
-	if fs.CursorLoc > 0 {
-		fs.CursorLoc--
-	}
-}
-
-func (fs *FilterState) MoveCursorRight() {
-	if fs.CursorLoc < textWidth(fs.Text) {
-		fs.CursorLoc++
-	}
-}
-
-func (fs *FilterState) DeleteCharacter() {
-	if fs.CursorLoc > 0 {
-		ft := fs.Text
-		cl := fs.CursorLoc
-		fs.Text = string([]rune(ft)[:cl-1]) + string([]rune(ft)[cl:])
-		fs.CursorLoc--
-	}
-}
-
-func (fs *FilterState) InsertCharacter(r rune) {
-	ft := fs.Text
-	cl := fs.CursorLoc
-	fs.Text = string([]rune(ft)[:cl]) + string(r) + string([]rune(ft)[cl:])
-	fs.CursorLoc++
-}
-
-func newFilterState() *FilterState {
-	return &FilterState{
-		Text:              "",
-		CursorLoc:         0,
-		PrevSelectionText: "",
-	}
 }
 
 const QUICK_SELECT_AMT = 5
@@ -138,7 +93,7 @@ type Explorer struct {
 	inputMode      InputMode
 	barMode        BarMode
 	items          []*Item
-	filterState    *FilterState
+	filterState    *filter.FilterState
 }
 
 func NewExplorer(s tcell.Screen, directory string) *Explorer {
@@ -151,7 +106,7 @@ func NewExplorer(s tcell.Screen, directory string) *Explorer {
 		inputMode:      InputNormal,
 		barMode:        BarCurrentDir,
 		items:          []*Item{},
-		filterState:    newFilterState(),
+		filterState:    filter.NewFilterState(),
 	}
 	e.update()
 	return e
@@ -292,7 +247,7 @@ func (e *Explorer) handleFilterEntryKeyEvent(ev *tcell.EventKey) {
 
 func (e *Explorer) beginFilterEntry() {
 	e.filterState.PrevSelectionText = e.getSelectedItem().Text
-	e.filterState.CursorLoc = textWidth(e.filterState.Text)
+	e.filterState.CursorLoc = text.Width(e.filterState.Text)
 	e.inputMode = InputFilterEntry
 	e.barMode = BarFilterEntry
 	e.clearSelection()
@@ -433,8 +388,8 @@ func (e *Explorer) drawUnselectedItem(item *Item, y int) {
 		pre := item.Text[:matchIdx]
 		post := item.Text[matchIdx+len(e.filterState.Text):]
 		e.drawText(pre, 0, y, style)
-		e.drawText(e.filterState.Text, textWidth(pre), y, filterMatchStyle)
-		e.drawText(post, textWidth(pre+e.filterState.Text), y, style)
+		e.drawText(e.filterState.Text, text.Width(pre), y, filterMatchStyle)
+		e.drawText(post, text.Width(pre+e.filterState.Text), y, style)
 	} else {
 		e.drawText(item.Text, 0, y, style)
 	}
@@ -478,7 +433,7 @@ func (e *Explorer) updateKeybinds() {
 	// Find longest "key" to align descriptions together
 	maxKeyLen := 0
 	for _, keybind := range keybinds {
-		keyLen := textWidth(keybind.key)
+		keyLen := text.Width(keybind.key)
 		if keyLen > maxKeyLen {
 			maxKeyLen = keyLen
 		}
@@ -509,7 +464,7 @@ func (e *Explorer) updateBarCurrentDir() {
 	e.drawBarBase(style)
 	barText := e.currentDir
 	e.drawText(barText, 0, y, style.Bold(true))
-	e.drawText(" (? for help)", textWidth(barText), y, style)
+	e.drawText(" (? for help)", text.Width(barText), y, style)
 }
 
 func (e *Explorer) updateBarFilterEntry() {
@@ -518,8 +473,8 @@ func (e *Explorer) updateBarFilterEntry() {
 	e.drawBarBase(style)
 	barText := "(Esc/Enter) Enter filter: "
 	e.drawText(barText, 0, y, style.Bold(true))
-	e.screen.ShowCursor(textWidth(barText)+e.filterState.CursorLoc, y)
-	e.drawText(e.filterState.Text, textWidth(barText), y, filterBarStyle)
+	e.screen.ShowCursor(text.Width(barText)+e.filterState.CursorLoc, y)
+	e.drawText(e.filterState.Text, text.Width(barText), y, filterBarStyle)
 }
 
 func (e *Explorer) updateBarFilterApplied() {
@@ -528,7 +483,7 @@ func (e *Explorer) updateBarFilterApplied() {
 	e.drawBarBase(style)
 	barText := "(Esc) Filter: "
 	e.drawText(barText, 0, y, style.Bold(true))
-	e.drawText(e.filterState.Text, textWidth(barText), y, filterBarStyle)
+	e.drawText(e.filterState.Text, text.Width(barText), y, filterBarStyle)
 }
 
 func (e *Explorer) sel(idx int) {
@@ -575,8 +530,4 @@ func (e *Explorer) getUsableHeight() int {
 func (e *Explorer) drawBarBase(style tcell.Style) {
 	width, height := e.screen.Size()
 	e.drawText(strings.Repeat(" ", width), 0, height-1, style)
-}
-
-func textWidth(s string) int {
-	return utf8.RuneCountInString(s)
 }
