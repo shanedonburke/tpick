@@ -208,7 +208,7 @@ func (e *Explorer) copyAndExit() {
 	}
 
 	e.closeScreen()
-	fmt.Print(itemPath)
+	fmt.Println(itemPath)
 	os.Exit(0)
 }
 
