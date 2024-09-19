@@ -381,6 +381,7 @@ func (e *Explorer) updateNormal() {
 
 	entries := e.readCurrentDir()
 
+	// Build items from contents of current directory
 	items := []*Item{}
 	for _, entry := range entries {
 		isDir := entry.IsDir()
@@ -397,6 +398,7 @@ func (e *Explorer) updateNormal() {
 	}
 	slices.SortFunc(items, e.itemSortFunc)
 
+	// Append ever-present '.' and '..' items
 	e.items = append(
 		dotItems,
 		items...,
@@ -439,6 +441,7 @@ func (e *Explorer) drawUnselectedItem(item *Item, y int) {
 }
 
 func (e *Explorer) itemSortFunc(a, b *Item) int {
+	// Directories alphabetically, then files alphabetically
 	if a.IsDir && !b.IsDir {
 		return -1
 	} else if b.IsDir && !a.IsDir {
