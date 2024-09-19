@@ -555,8 +555,10 @@ func (e *Explorer) drawText(text string, x, y int, style tcell.Style) {
 func (e *Explorer) updateScreenStartIdx() {
 	usableHeight := e.getUsableHeight()
 	if e.selectedIdx >= e.screenStartIdx+usableHeight {
+		// Must scroll down
 		e.screenStartIdx = e.selectedIdx - e.getUsableHeight() + 1
 	} else if e.selectedIdx < e.screenStartIdx {
+		// Must scroll up
 		// Prevent starting at -1 if we are entering filter (no selection)
 		e.screenStartIdx = max(0, e.selectedIdx)
 	}
