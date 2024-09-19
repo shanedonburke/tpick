@@ -45,7 +45,7 @@ func processArgs() string {
 			dirArg = arg
 		}
 	default:
-		fmt.Println("ERROR: Invalid arguments")
+		fmt.Println("Error: : Invalid arguments")
 		fmt.Println()
 		help.PrintHelp()
 		os.Exit(0)
@@ -53,7 +53,7 @@ func processArgs() string {
 
 	absDir, err := filepath.Abs(dirArg)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to get absolute path of %s: %v\n", dirArg, err)
+		fmt.Fprintf(os.Stderr, "Error: Failed to get absolute path of %s: %v\n", dirArg, err)
 		os.Exit(1)
 	}
 

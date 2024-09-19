@@ -2,6 +2,7 @@ package explorer
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -50,6 +51,34 @@ func (fs *FilterState) IsActive() bool {
 	return fs.Text != ""
 }
 
+func (fs *FilterState) MoveCursorLeft() {
+	if fs.CursorLoc > 0 {
+		fs.CursorLoc--
+	}
+}
+
+func (fs *FilterState) MoveCursorRight() {
+	if fs.CursorLoc < textWidth(fs.Text) {
+		fs.CursorLoc++
+	}
+}
+
+func (fs *FilterState) DeleteCharacter() {
+	if fs.CursorLoc > 0 {
+		ft := fs.Text
+		cl := fs.CursorLoc
+		fs.Text = string([]rune(ft)[:cl-1]) + string([]rune(ft)[cl:])
+		fs.CursorLoc--
+	}
+}
+
+func (fs *FilterState) InsertCharacter(r rune) {
+	ft := fs.Text
+	cl := fs.CursorLoc
+	fs.Text = string([]rune(ft)[:cl]) + string(r) + string([]rune(ft)[cl:])
+	fs.CursorLoc++
+}
+
 func newFilterState() *FilterState {
 	return &FilterState{
 		Text:              "",
@@ -87,6 +116,17 @@ var keybinds = []*Keybind{
 	newKeybind("Backspace", "Open parent directory"),
 	newKeybind("/", "Filter items"),
 	newKeybind("Enter", "Print selected path and copy to clipboard"),
+}
+
+var dotItems = []*Item{
+	{
+		Text:  ".",
+		IsDir: true,
+	},
+	{
+		Text:  "..",
+		IsDir: true,
+	},
 }
 
 type Explorer struct {
@@ -134,17 +174,9 @@ func (e *Explorer) handleNormalKeyEvent(ev *tcell.EventKey) {
 	case tcell.KeyCtrlC:
 		e.quit()
 	case tcell.KeyUp:
-		if ev.Modifiers()&tcell.ModShift > 0 {
-			e.sel(e.selectedIdx - QUICK_SELECT_AMT)
-		} else {
-			e.sel(e.selectedIdx - 1)
-		}
+		e.handleNormalKeyUp(ev)
 	case tcell.KeyDown:
-		if ev.Modifiers()&tcell.ModShift > 0 {
-			e.sel(e.selectedIdx + QUICK_SELECT_AMT)
-		} else {
-			e.sel(e.selectedIdx + 1)
-		}
+		e.handleNormalKeyDown(ev)
 	case tcell.KeyBackspace:
 		e.navToParent()
 	case tcell.KeyEnter:
@@ -166,6 +198,22 @@ func (e *Explorer) handleNormalKeyEvent(ev *tcell.EventKey) {
 		}
 	}
 	e.update()
+}
+
+func (e *Explorer) handleNormalKeyUp(ev *tcell.EventKey) {
+	if ev.Modifiers()&tcell.ModShift > 0 {
+		e.sel(e.selectedIdx - QUICK_SELECT_AMT)
+	} else {
+		e.sel(e.selectedIdx - 1)
+	}
+}
+
+func (e *Explorer) handleNormalKeyDown(ev *tcell.EventKey) {
+	if ev.Modifiers()&tcell.ModShift > 0 {
+		e.sel(e.selectedIdx + QUICK_SELECT_AMT)
+	} else {
+		e.sel(e.selectedIdx + 1)
+	}
 }
 
 func (e *Explorer) selectFirst() {
@@ -200,7 +248,7 @@ func (e *Explorer) copyAndExit() {
 	itemPath := e.getSelectedItemPath()
 
 	if err := clipboard.WriteAll(itemPath); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to copy selection to clipboard: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: Failed to copy selection to clipboard: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -230,28 +278,15 @@ func (e *Explorer) handleFilterEntryKeyEvent(ev *tcell.EventKey) {
 	case tcell.KeyEnter:
 		e.applyFilter()
 	case tcell.KeyLeft:
-		if e.filterState.CursorLoc > 0 {
-			e.filterState.CursorLoc--
-		}
+		e.filterState.MoveCursorLeft()
 	case tcell.KeyRight:
-		if e.filterState.CursorLoc < textWidth(e.filterState.Text) {
-			e.filterState.CursorLoc++
-		}
+		e.filterState.MoveCursorRight()
 	case tcell.KeyUp:
 	case tcell.KeyDown:
 	case tcell.KeyBackspace:
-		if e.filterState.CursorLoc > 0 {
-			ft := e.filterState.Text
-			cl := e.filterState.CursorLoc
-			e.filterState.Text = string([]rune(ft)[:cl-1]) + string([]rune(ft)[cl:])
-			e.filterState.CursorLoc--
-		}
+		e.filterState.DeleteCharacter()
 	default:
-		r := string(ev.Rune())
-		ft := e.filterState.Text
-		cl := e.filterState.CursorLoc
-		e.filterState.Text = string([]rune(ft)[:cl]) + r + string([]rune(ft)[cl:])
-		e.filterState.CursorLoc++
+		e.filterState.InsertCharacter(ev.Rune())
 	}
 }
 
@@ -344,18 +379,14 @@ func (e *Explorer) updateNormal() {
 	e.screen.Clear()
 	e.screen.HideCursor()
 
-	entries, err := os.ReadDir(e.currentDir)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to read directory: %v\n", err)
-		os.Exit(1)
-	}
+	entries := e.readCurrentDir()
 
 	items := []*Item{}
 	for _, entry := range entries {
 		isDir := entry.IsDir()
 		text := entry.Name()
 		if isDir {
-			text += "/"
+			text += "/" // Trailing slash to indicate directory
 		}
 		if strings.Contains(text, e.filterState.Text) {
 			items = append(items, &Item{
@@ -364,26 +395,10 @@ func (e *Explorer) updateNormal() {
 			})
 		}
 	}
-	slices.SortFunc(items, func(a, b *Item) int {
-		if a.IsDir && !b.IsDir {
-			return -1
-		} else if b.IsDir && !a.IsDir {
-			return 1
-		} else {
-			return strings.Compare(a.Text, b.Text)
-		}
-	})
+	slices.SortFunc(items, e.itemSortFunc)
+
 	e.items = append(
-		[]*Item{
-			{
-				Text:  ".",
-				IsDir: true,
-			},
-			{
-				Text:  "..",
-				IsDir: true,
-			},
-		},
+		dotItems,
 		items...,
 	)
 
@@ -394,29 +409,52 @@ func (e *Explorer) updateNormal() {
 			// Item is selected
 			e.drawText(item.Text, 0, y, selectedStyle)
 		} else {
-			var style tcell.Style
-
-			// Show directories in a different color
-			if item.IsDir {
-				style = dirStyle
-			} else {
-				style = tcell.StyleDefault
-			}
-
-			// Filter doesn't apply to '.' and '..
-			if e.filterState.IsActive() && y >= 2 {
-				// Highlight part of text matching filter
-				matchIdx := strings.Index(item.Text, e.filterState.Text)
-				pre := item.Text[:matchIdx]
-				post := item.Text[matchIdx+len(e.filterState.Text):]
-				e.drawText(pre, 0, y, style)
-				e.drawText(e.filterState.Text, textWidth(pre), y, filterMatchStyle)
-				e.drawText(post, textWidth(pre+e.filterState.Text), y, style)
-			} else {
-				e.drawText(item.Text, 0, y, style)
-			}
+			e.drawUnselectedItem(item, y)
 		}
 	}
+}
+
+func (e *Explorer) drawUnselectedItem(item *Item, y int) {
+	var style tcell.Style
+
+	// Show directories in a different color
+	if item.IsDir {
+		style = dirStyle
+	} else {
+		style = tcell.StyleDefault
+	}
+
+	// Filter doesn't apply to '.' and '..
+	if e.filterState.IsActive() && y >= 2 {
+		// Highlight part of text matching filter
+		matchIdx := strings.Index(item.Text, e.filterState.Text)
+		pre := item.Text[:matchIdx]
+		post := item.Text[matchIdx+len(e.filterState.Text):]
+		e.drawText(pre, 0, y, style)
+		e.drawText(e.filterState.Text, textWidth(pre), y, filterMatchStyle)
+		e.drawText(post, textWidth(pre+e.filterState.Text), y, style)
+	} else {
+		e.drawText(item.Text, 0, y, style)
+	}
+}
+
+func (e *Explorer) itemSortFunc(a, b *Item) int {
+	if a.IsDir && !b.IsDir {
+		return -1
+	} else if b.IsDir && !a.IsDir {
+		return 1
+	} else {
+		return strings.Compare(a.Text, b.Text)
+	}
+}
+
+func (e *Explorer) readCurrentDir() []fs.DirEntry {
+	entries, err := os.ReadDir(e.currentDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: Failed to read directory: %v\n", err)
+		os.Exit(1)
+	}
+	return entries
 }
 
 func (e *Explorer) updateKeybinds() {

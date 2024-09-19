@@ -10,11 +10,11 @@ import (
 func InitScreen() tcell.Screen {
 	s, err := tcell.NewScreen()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: Failed to create screen: %v\n", err)
 		os.Exit(1)
 	}
 	if err := s.Init(); err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: Failed to initialize screen: %v\n", err)
 		os.Exit(1)
 	}
 
