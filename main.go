@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -38,24 +39,45 @@ func processArgs() string {
 		dirArg = "."
 	case 2:
 		arg := strings.TrimSpace(os.Args[1])
-		if arg == "-h" || arg == "--help" {
+		if isHelpArg(arg) {
 			help.PrintHelp()
 			os.Exit(0)
 		} else {
 			dirArg = arg
 		}
 	default:
-		fmt.Println("Error: : Invalid arguments")
+		fmt.Println("Error: Invalid arguments")
 		fmt.Println()
 		help.PrintHelp()
 		os.Exit(0)
 	}
 
-	absDir, err := filepath.Abs(dirArg)
+	return processDirectoryArg(dirArg)
+}
+
+func processDirectoryArg(dirArg string) string {
+	dirPath, err := filepath.Abs(dirArg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to get absolute path of %s: %v\n", dirArg, err)
 		os.Exit(1)
 	}
 
-	return absDir
+	fileInfo, err := os.Stat(dirPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			fmt.Fprintf(os.Stderr, "Error: Directory '%s' does not exist\n", dirPath)
+		} else {
+			fmt.Fprintf(os.Stderr, "Error: Failed to stat directory '%s': %v\n", dirPath, err)
+		}
+		os.Exit(1)
+	}
+	if !fileInfo.IsDir() {
+		// The user specified a file, so use that file's directory
+		dirPath = filepath.Dir(dirPath)
+	}
+	return dirPath
+}
+
+func isHelpArg(arg string) bool {
+	return arg == "-h" || arg == "--help"
 }
