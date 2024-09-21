@@ -12,6 +12,10 @@ tpick is a CLI file picker.
 
 ![filtered files](./screenshots/filtered.png)
 
+# Installation
+
+Check the [Releases](https://github.com/shanedonburke/tpick/releases/latest) page for the latest executables.
+
 # Instructions
 
 ```
